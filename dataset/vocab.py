@@ -31,6 +31,7 @@ class Vocabulary:
         self.id2token = OrderedDict()  # {id : [token,field]}
         self.field_keys = OrderedDict()
         self.token2id[self.special_field_tag] = OrderedDict()
+        
 
         self.filename = ''  # this field is set in the `save_vocab` method
 
@@ -81,6 +82,7 @@ class Vocabulary:
             self.field_keys[key] = None
 
         self.field_keys[self.special_field_tag] = None  # retain the order of columns
+        print("field_keys:",self.field_keys)
 
     def get_field_ids(self, field_name, return_local=False):
         if field_name in self.token2id:
@@ -97,6 +99,7 @@ class Vocabulary:
         device = global_ids.device
 
         def map_global_ids_to_local_ids(gid):
+            #print(gid, self.id2token[gid])
             return self.id2token[gid][2] if gid != -100 else -100
 
         def map_global_ids_to_tokens(gid):

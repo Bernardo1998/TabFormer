@@ -20,15 +20,15 @@ logger = logging.getLogger(__name__)
 log = logger
 
 
-class TransactionDataset(Dataset):
+class EcommerceDataset(Dataset):
     def __init__(self,
                  mlm,
                  user_ids=None,
                  seq_len=10,
                  num_bins=10,
                  cached=True,
-                 root="./data/card/",
-                 fname="card_trans",
+                 root="./data/ecommerce/",
+                 fname="EcommerceUCI",
                  vocab_dir="checkpoints",
                  fextension="",
                  nrows=None,
@@ -73,12 +73,10 @@ class TransactionDataset(Dataset):
             return_data = torch.tensor(self.data[index], dtype=torch.long)
         else:
             return_data = torch.tensor(self.data[index], dtype=torch.long).reshape(self.seq_len, -1)
+        #print(return_data.min(), return_data.max())
 
         if self.return_labels:
             return_data = (return_data, torch.tensor(self.labels[index], dtype=torch.long))
-
-
-        #print(index, return_data.shape, torch.max(return_data))
 
         return return_data
 
@@ -116,6 +114,13 @@ class TransactionDataset(Dataset):
     def fraudEncoder(X):
         fraud = (X == 'Yes').astype(int)
         return pd.DataFrame(fraud)
+    
+    @staticmethod
+    def user_encode(X):
+        le = LabelEncoder()
+        # Fit the label encoder and transform the categorical column
+        userIDs = le.fit_transform(X)
+        return pd.DataFrame(userIDs)
 
     @staticmethod
     def nanNone(X):
@@ -164,7 +169,7 @@ class TransactionDataset(Dataset):
                     # assumption that user is first field
                     skip_idx = 1 if self.skip_user else 0
 
-                    user_trans.extend(row[skip_idx:-1])
+                    user_trans.extend(row[skip_idx:]) # The last column should not be skipped since it is not label.
                     user_labels.append(row[-1])
 
                 trans_data.append(user_trans)
@@ -180,7 +185,7 @@ class TransactionDataset(Dataset):
         return trans_data, trans_labels, columns_names
 
     def format_trans(self, trans_lst, column_names):
-        trans_lst = list(divide_chunks(trans_lst, len(self.vocab.field_keys) - 2))  # 2 to ignore isFraud and SPECIAL
+        trans_lst = list(divide_chunks(trans_lst, len(self.vocab.field_keys) - 1))  # 1 to ignore SPECIAL
         user_vocab_ids = []
 
         sep_id = self.vocab.get_id(self.vocab.sep_token, special_token=True)
@@ -246,8 +251,6 @@ class TransactionDataset(Dataset):
             self.user_ids = map(int, self.user_ids)
             data = data[data['User'].isin(self.user_ids)]
 
-        print(data.head())
-
         self.nrows = data.shape[0]
         log.info(f"read data : {data.shape}")
         return data
@@ -258,6 +261,7 @@ class TransactionDataset(Dataset):
 
     def init_vocab(self):
         column_names = list(self.trans_table.columns)
+        print(column_names)
         if self.skip_user:
             column_names.remove("User")
 
@@ -294,18 +298,25 @@ class TransactionDataset(Dataset):
 
         data = self.get_csv(data_file)
         log.info(f"{data_file} is read.")
+        # Drop unnecessary columns
+        data.drop(columns=['InvoiceNo', 'StockCode', 'Description'])
 
-        log.info("nan resolution.")
+        log.info("No nan resolution: no na in the data.")
         # Replace nan with None.
-        data['Errors?'] = self.nanNone(data['Errors?'])
+        #data['Errors?'] = self.nanNone(data['Errors?'])
         # Code fraud as integer level
-        data['Is Fraud?'] = self.fraudEncoder(data['Is Fraud?'])
-        data['Zip'] = self.nanZero(data['Zip'])
-        data['Merchant State'] = self.nanNone(data['Merchant State'])
-        data['Use Chip'] = self.nanNone(data['Use Chip'])
-        data['Amount'] = self.amountEncoder(data['Amount'])
+        #data['Is Fraud?'] = self.fraudEncoder(data['Is Fraud?'])
+        #data['Zip'] = self.nanZero(data['Zip'])
+        #data['Merchant State'] = self.nanNone(data['Merchant State'])
+        #data['Use Chip'] = self.nanNone(data['Use Chip'])
+        #data['Quantity'] = self.amountEncoder(data['Quantity'])
 
-        sub_columns = ['Errors?', 'MCC', 'Zip', 'Merchant State', 'Merchant City', 'Merchant Name', 'Use Chip']
+        log.info("fit user into range")
+        data['User'] = self.user_encode(data['User'])
+
+
+        sub_columns = ['Country']
+        #sub_columns = []
 
         log.info("label-fit-transform.")
         # Fit to label
@@ -317,38 +328,49 @@ class TransactionDataset(Dataset):
 
         log.info("timestamp fit transform")
         # Combine Y/M/D/T columns into a single integer timestamp.
-        timestamp = self.timeEncoder(data[['Year', 'Month', 'Day', 'Time']])
-        timestamp_fit, timestamp = self.label_fit_transform(timestamp, enc_type="time")
-        self.encoder_fit['Timestamp'] = timestamp_fit
-        data['Timestamp'] = timestamp
+        #timestamp = self.timeEncoder(data[['Year', 'Month', 'Day', 'Time']])
+        #timestamp_fit, timestamp = self.label_fit_transform(timestamp, enc_type="time")
+        #self.encoder_fit['Timestamp'] = timestamp_fit
+        data['InvoiceDate'] = pd.to_datetime(data['InvoiceDate'])
+        data['InvoiceDate'] = data['InvoiceDate'].astype(int) / 1e9
 
-        log.info("timestamp quant transform")
-        coldata = np.array(data['Timestamp'])
+        log.info("InvoiceData quant transform")
+        coldata = np.array(data['InvoiceDate'])
         bin_edges, bin_centers, bin_widths = self._quantization_binning(coldata)
-        data['Timestamp'] = self._quantize(coldata, bin_edges)
-        self.encoder_fit["Timestamp-Quant"] = [bin_edges, bin_centers, bin_widths]
+        data['InvoiceDate'] = self._quantize(coldata, bin_edges)
+        self.encoder_fit["InvoiceDate-Quant"] = [bin_edges, bin_centers, bin_widths]
 
-        log.info("amount quant transform")
+        log.info("Quantity quant transform")
         # Transfer numerical variables
-        coldata = np.array(data['Amount'])
+        coldata = np.array(data['Quantity'])
         bin_edges, bin_centers, bin_widths = self._quantization_binning(coldata)
-        data['Amount'] = self._quantize(coldata, bin_edges)
-        self.encoder_fit["Amount-Quant"] = [bin_edges, bin_centers, bin_widths]
+        data['Quantity'] = self._quantize(coldata, bin_edges)
+        self.encoder_fit["Quantity-Quant"] = [bin_edges, bin_centers, bin_widths]
+
+        log.info("UnitPrice quant transform")
+        # Transfer numerical variables
+        coldata = np.array(data['UnitPrice'])
+        bin_edges, bin_centers, bin_widths = self._quantization_binning(coldata)
+        data['UnitPrice'] = self._quantize(coldata, bin_edges)
+        self.encoder_fit["UnitPrice-Quant"] = [bin_edges, bin_centers, bin_widths]
 
         columns_to_select = ['User',
-                             'Card',
-                             'Timestamp',
-                             'Amount',
-                             'Use Chip',
-                             'Merchant Name',
-                             'Merchant City',
-                             'Merchant State',
-                             'Zip',
-                             'MCC',
-                             'Errors?',
-                             'Is Fraud?']
+                             'Quantity',
+                             'UnitPrice',
+                             'Country',
+                             'InvoiceDate']
 
         self.trans_table = data[columns_to_select]
+
+        for col in self.trans_table.columns:
+            unique_labels = self.trans_table[col].unique()
+            n_classes = len(unique_labels)
+            min_label = self.trans_table[col].min()
+            max_label = self.trans_table[col].max()
+
+            # Verify labels are within the range [0, n_classes-1]
+            is_valid = (min_label >= 0) and (max_label < n_classes)
+            print(f"{col} are valid: {is_valid}. Min: {min_label}. Max: {max_label}. n_classes: {n_classes}")
 
         log.info(f"writing cached csv to {path.join(dirname, fname)}")
         if not path.exists(dirname):

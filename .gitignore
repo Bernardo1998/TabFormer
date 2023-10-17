@@ -1,0 +1,7 @@
+data/*
+command
+*__pycache__*
+checkpoints/*
+generate*
+sampled*
+launch.json

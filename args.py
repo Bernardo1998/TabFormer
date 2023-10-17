@@ -25,7 +25,7 @@ def define_main_parser(parser=None):
                         help="mask mlm_probability")
 
     parser.add_argument("--data_type", type=str,
-                        default="card", choices=['card', 'prsa'],
+                        default="card", choices=['card', 'prsa','ecommerce'],
                         help='root directory for files')
     parser.add_argument("--data_root", type=str,
                         default="./data/credit_card/",
@@ -62,7 +62,7 @@ def define_main_parser(parser=None):
                         default=500,
                         help="set checkpointing")
     parser.add_argument("--num_train_epochs", type=int,
-                        default=3,
+                        default=1,
                         help="number of training epochs")
     parser.add_argument("--stride", type=int,
                         default=5,
@@ -73,5 +73,15 @@ def define_main_parser(parser=None):
                         help="hidden size for transaction transformer")
     parser.add_argument("--skip_user", action='store_true',
                         help="if user field to be skipped or added (default add)")
-
+    
+    ###################
+    # Sampling args
+    ###################
+    parser.add_argument("--num_samples", type=int,
+                        default=10,
+                        help="how many sequences in synthetic data")
+    parser.add_argument("--condition", type=str,
+                        default="./data/credit_card/condition.json",
+                        help='directory for conditional generation file')
+    
     return parser

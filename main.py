@@ -1,15 +1,18 @@
 from os import makedirs
+import os
 from os.path import join
 import logging
 import numpy as np
 import torch
 import random
+import json
 from args import define_main_parser
 
 from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments
 
 from dataset.prsa import PRSADataset
 from dataset.card import TransactionDataset
+from dataset.ecommerce import EcommerceDataset
 from models.modules import TabFormerBertLM, TabFormerGPT2
 from misc.utils import random_split_dataset
 from dataset.datacollator import TransDataCollatorForLanguageModeling
@@ -53,7 +56,17 @@ def main(args):
                               use_station=False,
                               flatten=args.flatten,
                               vocab_dir=args.output_dir)
-
+    elif args.data_type == 'ecommerce':
+        dataset = EcommerceDataset(fextension=args.data_extension,
+                                     vocab_dir=args.output_dir,
+                                     nrows=args.nrows,
+                                     user_ids=args.user_ids,
+                                     mlm=args.mlm,
+                                     cached=args.cached,
+                                     stride=args.stride,
+                                     flatten=args.flatten,
+                                     return_labels=False,
+                                     skip_user=args.skip_user)
     else:
         raise Exception(f"data type '{args.data_type}' not defined")
 
@@ -111,11 +124,11 @@ def main(args):
         logging_dir=args.log_dir,  # directory for storing logs
         save_steps=args.save_steps,
         do_train=args.do_train,
-        # do_eval=args.do_eval,
-        # evaluation_strategy="epoch",
+        #do_eval=args.do_eval,
+        #evaluation_strategy="epoch",
         prediction_loss_only=True,
         overwrite_output_dir=True,
-        # eval_steps=10000
+        #eval_steps=10000
     )
 
     trainer = Trainer(
@@ -132,6 +145,13 @@ def main(args):
         model_path = args.output_dir
 
     trainer.train(model_path=model_path)
+    trainer.save_model(args.output_dir)
+
+    if args.condition is not None and os.path.exists(args.condition):
+        prompt = json.load(open(args.condition))
+        prompt = torch.tensor(prompt).long()
+    sampled_table = tab_net.model.generate_table(args.num_samples, vocab,prompt)
+    sampled_table.to_csv("sampled.csv",index=False)
 
 
 if __name__ == "__main__":
