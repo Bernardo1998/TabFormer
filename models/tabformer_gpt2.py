@@ -6,6 +6,13 @@ import pandas as pd
 from transformers.modeling_gpt2 import GPT2LMHeadModel
 from transformers.modeling_outputs import CausalLMOutput
 
+
+from transformers import GPT2LMHeadModel, GPT2Config
+from transformers.modeling_outputs import CausalLMOutput
+from transformers import PreTrainedModel
+from transformers.utils import logging
+from pathlib import Path
+
 DEBUG = False
 
 class TabFormerGPT2LMHeadModel(GPT2LMHeadModel):
@@ -124,10 +131,11 @@ class TabFormerGPT2LMHeadModel(GPT2LMHeadModel):
 
             # Decode the generated output using the vocabulary object's method
             decoded_output = vocab.get_from_global_ids(generated_output[0], 'tokens')
+            print(decoded_output)
 
             # Convert to string
             generated_sequence = self.convert_to_dataframe(decoded_output, columns)
-            generated_sequence.insert(loc=0, column='User', value=i)
+            #generated_sequence.insert(loc=0, column='User', value=i)
             if generated_sequence is not None:
                 decoded_sequences.append(generated_sequence)
                 print(generated_sequence)
@@ -172,3 +180,34 @@ class TabFormerGPT2LMHeadModel(GPT2LMHeadModel):
 
         return df
 
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs):
+        # Ensure the configuration is correct
+        config = kwargs.pop("config", None)
+        if config is None:
+            config = GPT2Config.from_pretrained(pretrained_model_name_or_path)
+
+        # Create the model
+        model = cls(config, *model_args, **kwargs)
+        
+        # Load the state dictionary
+        state_dict = None
+        try:
+            state_dict = PreTrainedModel._state_dict_from_pretrained(
+                pretrained_model_name_or_path,
+                proxy=kwargs.pop("proxy", None),
+            )
+        except UserWarning as err:
+            pass
+
+        if state_dict is None:
+            return model
+
+        # Update the state dictionary to match the class
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+        if len(missing_keys) > 0:
+            print(f"Missing keys: {missing_keys}")
+        if len(unexpected_keys) > 0:
+            print(f"Unexpected keys: {unexpected_keys}")
+
+        return model

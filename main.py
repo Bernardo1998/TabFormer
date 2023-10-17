@@ -13,6 +13,7 @@ from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArgum
 from dataset.prsa import PRSADataset
 from dataset.card import TransactionDataset
 from dataset.ecommerce import EcommerceDataset
+from dataset.dvlog import DvlogDataset
 from models.modules import TabFormerBertLM, TabFormerGPT2
 from misc.utils import random_split_dataset
 from dataset.datacollator import TransDataCollatorForLanguageModeling
@@ -58,6 +59,19 @@ def main(args):
                               vocab_dir=args.output_dir)
     elif args.data_type == 'ecommerce':
         dataset = EcommerceDataset(fextension=args.data_extension,
+                                     vocab_dir=args.output_dir,
+                                     nrows=args.nrows,
+                                     user_ids=args.user_ids,
+                                     mlm=args.mlm,
+                                     cached=args.cached,
+                                     stride=args.stride,
+                                     flatten=args.flatten,
+                                     return_labels=False,
+                                     skip_user=args.skip_user)
+    elif args.data_type == 'dvlog':
+        dataset = DvlogDataset(root=args.data_root,
+                                     fname=args.data_fname,
+                                     fextension=args.data_extension,
                                      vocab_dir=args.output_dir,
                                      nrows=args.nrows,
                                      user_ids=args.user_ids,
@@ -144,14 +158,16 @@ def main(args):
     else:
         model_path = args.output_dir
 
-    trainer.train(model_path=model_path)
-    trainer.save_model(args.output_dir)
+    if 'train' in args.jobType:
+        trainer.train(model_path=model_path)
+        trainer.save_model(args.output_dir)
 
-    if args.condition is not None and os.path.exists(args.condition):
-        prompt = json.load(open(args.condition))
-        prompt = torch.tensor(prompt).long()
-    sampled_table = tab_net.model.generate_table(args.num_samples, vocab,prompt)
-    sampled_table.to_csv("sampled.csv",index=False)
+    if 'gen' in args.jobType:
+        if args.condition is not None and os.path.exists(args.condition):
+            prompt = json.load(open(args.condition))
+            prompt = torch.tensor(prompt).long()
+        sampled_table = tab_net.model.generate_table(args.num_samples, vocab,prompt)
+        sampled_table.to_csv("sampled.csv",index=False)
 
 
 if __name__ == "__main__":

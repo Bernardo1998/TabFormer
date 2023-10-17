@@ -25,7 +25,7 @@ def define_main_parser(parser=None):
                         help="mask mlm_probability")
 
     parser.add_argument("--data_type", type=str,
-                        default="card", choices=['card', 'prsa','ecommerce'],
+                        default="card", choices=['card', 'prsa','ecommerce','dvlog'],
                         help='root directory for files')
     parser.add_argument("--data_root", type=str,
                         default="./data/credit_card/",
@@ -83,5 +83,9 @@ def define_main_parser(parser=None):
     parser.add_argument("--condition", type=str,
                         default="./data/credit_card/condition.json",
                         help='directory for conditional generation file')
+    
+    parser.add_argument("--jobType", type=str,
+                        default="train_and_gen", choices=["train_and_gen", "gen", "train"],
+                        help='type of pipeline')
     
     return parser
