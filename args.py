@@ -59,10 +59,10 @@ def define_main_parser(parser=None):
     parser.add_argument("--do_eval", action='store_true',
                         help="enable evaluation flag")
     parser.add_argument("--save_steps", type=int,
-                        default=500,
+                        default=1000,
                         help="set checkpointing")
     parser.add_argument("--num_train_epochs", type=int,
-                        default=1,
+                        default=5,
                         help="number of training epochs")
     parser.add_argument("--stride", type=int,
                         default=5,
@@ -78,12 +78,14 @@ def define_main_parser(parser=None):
     # Sampling args
     ###################
     parser.add_argument("--num_samples", type=int,
-                        default=10,
+                        default=100,
                         help="how many sequences in synthetic data")
     parser.add_argument("--condition", type=str,
                         default="./data/credit_card/condition.json",
                         help='directory for conditional generation file')
-    
+    parser.add_argument("--prompt", type=str,
+                        default="./data/credit_card/prompt.json",
+                        help='path for prompt(starting sequence) file')
     parser.add_argument("--jobType", type=str,
                         default="train_and_gen", choices=["train_and_gen", "gen", "train"],
                         help='type of pipeline')

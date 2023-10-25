@@ -1,5 +1,6 @@
 from torch.nn import CrossEntropyLoss
 import torch
+from torch.distributions import Categorical
 
 import pandas as pd
 
@@ -12,6 +13,7 @@ from transformers.modeling_outputs import CausalLMOutput
 from transformers import PreTrainedModel
 from transformers.utils import logging
 from pathlib import Path
+from tqdm import tqdm
 
 DEBUG = False
 
@@ -33,7 +35,6 @@ class TabFormerGPT2LMHeadModel(GPT2LMHeadModel):
             use_cache=True,    
             return_dict=None
     ):        
-        
         transformer_outputs = self.transformer(
             input_ids,
             past_key_values=past_key_values,
@@ -107,30 +108,72 @@ class TabFormerGPT2LMHeadModel(GPT2LMHeadModel):
             attentions=transformer_outputs[3] if len(transformer_outputs) > 3 else None
         )
     
-    def generate_table(self, n, vocab, prompt=None):
+    def autoregressive_generate(self, input_ids, max_length=100, temperature=1.0,condition=None):
+        """
+        Args:
+        - input_ids (torch.Tensor): a tensor of shape (batch_size, seq_len) containing the input IDs.
+        - max_length (int): the maximum sequence length to generate.
+        - temperature (float): the temperature for sampling. Higher values make the sampling more random.
+        - condition: (dictionary): global ids of conditional context columns. Note that we can set a condition as None, then the condition will be set by the first generation. 
+
+        Returns:
+        - generated_ids (torch.Tensor): a tensor of shape (batch_size, generated_seq_len) containing the generated IDs.
+        """
+        self.eval()  # Set the model to evaluation mode
+        field_names = self.vocab.get_field_keys(remove_target=True, ignore_special=True)
+        idx_current_field = 0
+        with torch.no_grad():  # Disable gradient computation
+            generated_ids = input_ids
+            batch_size = input_ids.size(0)
+            for _ in range(max_length - input_ids.size(1)):
+                current_field = field_names[idx_current_field]
+                if condition is not None and current_field in condition and condition[current_field] is not None: 
+                    # Use the given condition
+                    next_token = condition[current_field]
+                else:
+                    # Get the model's output if no condition given
+                    outputs = self(input_ids=generated_ids)
+                    logits = outputs.logits[:, -1, :] / temperature  # Get the logits of the last token and apply temperature
+                    # Decide the next field to be sampled and select its logits
+                    idx_current_field = idx_current_field + 1 if idx_current_field < (len(field_names)-1) else 0
+                    global_ids_field = self.vocab.get_field_ids(current_field)
+                    lm_logits_field = logits[-1, global_ids_field]
+                    # Sample the next id based on probs of this field
+                    probs = torch.nn.functional.softmax(lm_logits_field, dim=-1)
+                    m = Categorical(probs)
+                    predicted_local_id = m.sample().unsqueeze(-1)
+                    next_token = self.vocab.get_from_local_ids(predicted_local_id,current_field)
+                    if condition is not None and current_field in condition and condition[current_field] is None: 
+                        condition[current_field] = next_token
+                # Check for the EOS token
+                if (next_token == 6):
+                    break
+                next_token_tensor = torch.tensor([[next_token]]).to(generated_ids.device)
+                # Append the next token to the generated sequence
+                generated_ids = torch.cat((generated_ids, next_token_tensor), dim=1)
+        return generated_ids
+       
+    def generate_table(self, n, condition=None, max_length=1024,prompt=None):
         '''
-            prompt: either one prompt for all sequences, or separate prompt for each sequence.
+            condition: a dictionary in form: {'field_name':local_id}
         '''
-        # Assuming you have the sentence start ID
-        if prompt is None:
-            prompt = torch.tensor([[5,8,13,24,34,38,374,638.700,1000,1078,1084]])  # replace with your actual sentence start ID
-        elif torch.is_tensor(prompt):
-            if len(prompt) != 1 and len(prompt) != n:
-                raise ValueError(f"Incompatible prompt length! Expected 1 or {n} but got {len(prompt)}")
-        else:
-           raise ValueError(f"Incompatible prompt type: {type(prompt)}. Expected torch.Tensor.")
+        # Assuming you have the sentence start ID        
+        prompt = torch.tensor([[5]]) if prompt is None else prompt
+        print("Condition:", condition)
 
         # Generate output from the model using the sentence start ID as prompt
         decoded_sequences = []
-        columns = vocab.get_field_keys() # Get original data columns
+        columns = self.vocab.get_field_keys() # Get original data columns
         print(columns)
+        #max_length = n * len(columns) + 2 # + 2 for BOS/EOS
         # Using a beam search for better quality text, but you can modify this as required
-        for i in range(n):
+        for i in tqdm(range(n)):
+            #try:
             prompt_i = prompt if len(prompt) == 1 else prompt[i]
-            generated_output = self.generate(prompt_i.to(torch.device("cuda" if torch.cuda.is_available() else "cpu")), max_length=100, num_beams=5)
+            generated_output = self.autoregressive_generate(prompt_i.to(torch.device("cuda" if torch.cuda.is_available() else "cpu")), max_length=max_length, condition=condition)
 
             # Decode the generated output using the vocabulary object's method
-            decoded_output = vocab.get_from_global_ids(generated_output[0], 'tokens')
+            decoded_output = self.vocab.get_from_global_ids(generated_output[0], 'tokens')
             print(decoded_output)
 
             # Convert to string
@@ -139,6 +182,8 @@ class TabFormerGPT2LMHeadModel(GPT2LMHeadModel):
             if generated_sequence is not None:
                 decoded_sequences.append(generated_sequence)
                 print(generated_sequence)
+            #except Exception as e:
+            #    print(f"Error {e} generating sequence {i}. Skipping.")
 
         return pd.concat(decoded_sequences)
 

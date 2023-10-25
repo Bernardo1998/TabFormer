@@ -94,6 +94,24 @@ class Vocabulary:
         if return_local:
             selected_idx = 1
         return [ids[idx][selected_idx] for idx in ids]
+    
+
+    def get_from_local_ids(self, local_id, field_name, what_to_get='global_ids'):
+        # Ensure the field_name exists in the token2id dictionary
+        if field_name not in self.token2id:
+            raise ValueError(f"Field name {field_name} not found in token2id dictionary")
+
+        # Iterate through the tokens in the specified field
+        for token, ids in self.token2id[field_name].items():
+            if ids[1] == local_id:
+                if what_to_get == 'global_ids':
+                    return ids[0]  # Return the global_id when a match is found
+                else:
+                    return token
+
+        # If no match is found, raise an error or return None (based on your preference)
+        raise ValueError(f"No matching global_id found for field_name {field_name} and local_id {local_id}")
+            
 
     def get_from_global_ids(self, global_ids, what_to_get='local_ids'):
         device = global_ids.device

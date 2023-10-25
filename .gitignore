@@ -5,3 +5,5 @@ checkpoints/*
 generate*
 sampled*
 launch.json
+*.png
+*.out

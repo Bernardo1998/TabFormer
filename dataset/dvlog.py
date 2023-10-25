@@ -28,7 +28,7 @@ class DvlogDataset(Dataset):
                  num_bins=10,
                  cached=True,
                  root="./data/dvlog/",
-                 fname="acoustic",
+                 fname="acoustic_10pct",
                  vocab_dir="checkpoints",
                  fextension="",
                  nrows=None,
@@ -299,7 +299,7 @@ class DvlogDataset(Dataset):
         data = self.get_csv(data_file)
         log.info(f"{data_file} is read.")
         # Drop unnecessary columns
-        data.drop(columns=['Fold'])
+        #data.drop(columns=['Fold'])
 
         log.info("No nan resolution: no na in the data.")
         # Replace nan with None.
@@ -341,9 +341,10 @@ class DvlogDataset(Dataset):
 
         log.info("Acoustic quant transform")
         # Transfer numerical variables
-        acoustic_columns = ['Acoustic_'+str(i) for i in range(25)]
+        acoustic_columns = ['Acoustic'+str(i) for i in range(25)]
         for acoustic_column in acoustic_columns:
             coldata = np.array(data[acoustic_column])
+            print(acoustic_column, data[acoustic_column].dtype)
             bin_edges, bin_centers, bin_widths = self._quantization_binning(coldata)
             data[acoustic_column] = self._quantize(coldata, bin_edges)
             self.encoder_fit[acoustic_column+"-Quant"] = [bin_edges, bin_centers, bin_widths]

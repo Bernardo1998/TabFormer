@@ -164,9 +164,12 @@ def main(args):
 
     if 'gen' in args.jobType:
         if args.condition is not None and os.path.exists(args.condition):
-            prompt = json.load(open(args.condition))
+            condition = json.load(open(args.condition))
+            #condition = torch.tensor(condition).long()
+        if args.prompt is not None and os.path.exists(args.prompt):
+            prompt = json.load(open(args.prompt))
             prompt = torch.tensor(prompt).long()
-        sampled_table = tab_net.model.generate_table(args.num_samples, vocab,prompt)
+        sampled_table = tab_net.model.generate_table(args.num_samples,condition=condition, prompt=prompt)
         sampled_table.to_csv("sampled.csv",index=False)
 
 
